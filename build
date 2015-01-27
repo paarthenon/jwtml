@@ -1,5 +1,5 @@
 #!/bin/zsh
-ocamlfind ocamlc -package nocrypto -g -linkpkg jwt.ml -a -o jwt.cma
+ocamlfind ocamlc -package nocrypto,yojson -g -linkpkg jwt.ml -a -o jwt.cma
 
 
 
