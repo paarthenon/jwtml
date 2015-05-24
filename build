@@ -4,4 +4,3 @@ ocamlfind ocamlc -package nocrypto,yojson -g -linkpkg jwt.ml -a -o jwt.cma
 
 
 
-
