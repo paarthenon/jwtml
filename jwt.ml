@@ -19,8 +19,6 @@ type t =
 	signature: string option; }
 
 module SignedToken = struct
-	open Nocrypto
-	open Nocrypto.Uncommon
 	open Nocrypto.Hash
 
 	let signing_func = function
