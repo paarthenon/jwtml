@@ -13,10 +13,27 @@ type jwt_header =
 type jwt_payload = 
 	{ claims: (string * string) list }
 
+type jwt_base = {
+	header: string;
+	payload: string;
+	signature: string option;
+}
 type t =
   {	header: jwt_header;
 	payload: jwt_payload;
 	signature: string option; }
+
+
+module StringExt = struct
+	let dequote str =
+		let len = String.length str in
+		if str.[0] = '\"' && str.[len-1] = '\"' then
+			String.sub str 1 (len - 2)
+		else
+			str
+
+	let enquote str = String.concat "" ["\"";str;"\""]
+end
 
 module SignedToken = struct
 	open Nocrypto.Hash
@@ -68,16 +85,7 @@ let str_of_alg = function
 	| Some HS256 -> "HS256"
 	| Some HS384 -> "HS384"
 	| Some HS512 -> "HS512"
-	| None -> "None"
-
-let dequote str =
-	let len = String.length str in
-	if str.[0] = '\"' && str.[len-1] = '\"' then
-		String.sub str 1 (len - 2)
-	else
-		str
-
-let enquote str = String.concat "" ["\"";str;"\""]
+	| None -> "none"
 
 let parse token =
 	token
@@ -87,9 +95,9 @@ let parse token =
 		| head::payload::t ->
 			let open Yojson.Basic in
 
-			let alg = head |> from_string |> Util.member "alg" |> to_string |> dequote |> alg_of_str in
+			let alg = head |> from_string |> Util.member "alg" |> to_string |> StringExt.dequote |> alg_of_str in
 			let claims = match (from_string payload) with 
-				| `Assoc list -> List.map (fun (a,b) -> (a,dequote(to_string b))) list
+				| `Assoc list -> List.map (fun (a,b) -> (a, StringExt.dequote(to_string b))) list
 				| _ -> raise (Jwt_format_error "Invalid payload")
 			in
 			let signature = match t with
@@ -127,6 +135,19 @@ let encode token =
 	let compile x = B64.encode (Yojson.Basic.to_string x) in
 	String.concat "." [compile headj ; compile claimsj ; "signature"]
 
-let verify key token =
-	SignedToken.verify
-let decode token key = ()
+let validate alg key token =
+	(*
+		- Verify token structure (accomplished through parsing)
+		- Verify signature is accurate
+		- 
+	*)
+	let rec split_last sofar = function
+		| h::t -> split_last (h::sofar) t
+		| [x] -> (List.rev sofar, Some x)
+		| [] -> ([], None)
+	in
+	let (front, back) = split_last [] [] in
+	();true
+
+let decode token key = 
+	if validate HS256 "" token then Some (parse token) else None
