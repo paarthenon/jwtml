@@ -31,8 +31,6 @@ module StringExt = struct
 			String.sub str 1 (len - 2)
 		else
 			str
-
-	let enquote str = String.concat "" ["\"";str;"\""]
 end
 
 module SignedToken = struct
