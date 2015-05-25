@@ -89,7 +89,7 @@ let parse token =
 
 			let alg = head |> from_string |> Util.member "alg" |> to_string |> dequote |> alg_of_str in
 			let claims = match (from_string payload) with 
-				| `Assoc list -> List.map (fun (a,b) -> (a,to_string b)) list
+				| `Assoc list -> List.map (fun (a,b) -> (a,dequote(to_string b))) list
 				| _ -> raise (Jwt_format_error "Invalid payload")
 			in
 			let signature = match t with
@@ -111,11 +111,8 @@ let parse token =
 let json_of_header h =
 	let alg_str = (str_of_alg(h.alg)) in
 	`Assoc
-	[
-		("type", `String "JWT");
-		("alg", `String alg_str)
-
-	]
+	  [	("typ", `String "JWT");
+		("alg", `String alg_str) ]
 
 let json_of_claims claims = 
 	let rec convert_claims = function
