@@ -1,4 +1,6 @@
 # jwtml
 **JwtML** (pronounced *jot-em-all*)
 
-An absurdly unstable JWT handling library for OCaml
+A new, unstable [JWT](http://jwt.io) handling library for OCaml built in OCaml. 
+
+JwtML will operate on the level of strings and custom Jwt types, no bit mashing required. 
