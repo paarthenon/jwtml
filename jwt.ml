@@ -2,6 +2,12 @@
 
 exception Jwt_format_error of string
 
+type claim =
+	| String
+	| Date
+	| Number
+	| Boolean
+
 type algorithm = 
 	| HS256
 	| HS384
@@ -145,7 +151,7 @@ let validate alg key token =
 		| [] -> ([], None)
 	in
 	let (front, back) = split_last [] [] in
-	();true
+	ignore(front,back);true
 
 let decode token key = 
 	if validate HS256 "" token then Some (parse token) else None
