@@ -3,10 +3,10 @@
 exception Jwt_format_error of string
 
 type claim =
-	| String
-	| Date
-	| Number
-	| Boolean
+	| String of string
+	| Date of int
+	| Number of float
+	| Boolean of bool
 
 type algorithm = 
 	| HS256
@@ -17,7 +17,7 @@ type jwt_header =
 	{ alg: algorithm option }
 
 type jwt_payload = 
-	{ claims: (string * string) list }
+	{ claims: (string * claim) list }
 
 type jwt_base = {
 	header: string;
@@ -101,7 +101,9 @@ let parse token =
 
 			let alg = head |> from_string |> Util.member "alg" |> to_string |> StringExt.dequote |> alg_of_str in
 			let claims = match (from_string payload) with 
-				| `Assoc list -> List.map (fun (a,b) -> (a, StringExt.dequote(to_string b))) list
+				| `Assoc list -> list
+					|> List.map (fun (a,b) -> (a, StringExt.dequote(to_string b)))
+					|> List.map (fun (a,b) -> (a, String b))
 				| _ -> raise (Jwt_format_error "Invalid payload")
 			in
 			let signature = match t with
@@ -127,8 +129,14 @@ let json_of_header h =
 		("alg", `String alg_str) ]
 
 let json_of_claims claims = 
+	let to_json = function
+		| String s -> `String s
+		| Number n -> `Float n
+		| Date d -> `Int d
+		| Boolean b -> `Bool b
+	in
 	let rec convert_claims = function
-		| ((t,c)::tl) -> (t,`String  c)::convert_claims(tl)
+		| ((t, c)::tl) -> (t, to_json c)::convert_claims(tl)
 		| [] -> []
 	in
 	`Assoc (convert_claims claims)
