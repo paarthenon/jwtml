@@ -5,7 +5,8 @@ exception Jwt_format_error of string
 type claim =
 	| String of string
 	| Date of int
-	| Number of float
+	| Float of float
+	| Integer of int
 	| Boolean of bool
 
 type algorithm = 
@@ -131,7 +132,8 @@ let json_of_header h =
 let json_of_claims claims = 
 	let to_json = function
 		| String s -> `String s
-		| Number n -> `Float n
+		| Float n -> `Float n
+		| Integer i -> `Int i
 		| Date d -> `Int d
 		| Boolean b -> `Bool b
 	in
