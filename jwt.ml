@@ -9,6 +9,8 @@ type claim =
 	| Integer of int
 	| Boolean of bool
 
+type claims = (string * claim) list
+
 type algorithm = 
 	| HS256
 	| HS384
@@ -17,8 +19,6 @@ type algorithm =
 type jwt_header =
 	{ alg: algorithm option }
 
-type jwt_payload = 
-	{ claims: (string * claim) list }
 
 type jwt_base = {
 	header: string;
@@ -26,8 +26,8 @@ type jwt_base = {
 	signature: string option;
 }
 type t =
-  {	header: jwt_header;
-	payload: jwt_payload;
+  {	header: claims; (* At this point the header is effectively useless *)
+	payload: claims;
 	signature: string option; }
 
 
@@ -92,42 +92,35 @@ let str_of_alg = function
 	| Some HS512 -> "HS512"
 	| None -> "none"
 
-let parse token =
+let parse alg token =
 	token
 	|> Str.split (Str.regexp "\\.")
 	|> List.map B64.decode
 	|> function
-		| head::payload::t ->
+		| header::payload::t ->
 			let open Yojson.Basic in
 
-			let alg = head |> from_string |> Util.member "alg" |> to_string |> StringExt.dequote |> alg_of_str in
-			let claims = match (from_string payload) with 
+			let claims_of_json json = match (from_string json) with 
 				| `Assoc list -> list
 					|> List.map (fun (a,b) -> (a, StringExt.dequote(to_string b)))
 					|> List.map (fun (a,b) -> (a, String b))
-				| _ -> raise (Jwt_format_error "Invalid payload")
+				| _ -> raise (Jwt_format_error "Invalid Token")
 			in
+
+			let header_claims = claims_of_json header in
+			let payload_claims = claims_of_json payload in
+
 			let signature = match t with
 				| [] -> if alg = None then None else raise (Jwt_format_error "No signature present despite an algorithm being specified")
 				| [x] -> Some x
 				| _ -> raise @@ Jwt_format_error "Invalid Jwt structure. More than 3 parts"
 			in
 			{
-				header = {
-					alg = alg	
-				};
-				payload = {
-					claims = claims
-				};
+				header = header_claims;
+				payload = payload_claims;
 				signature = signature
 			}
 		| _ -> raise (Jwt_format_error "Improper input. Expected a period-delimited string with two or three parts")
-
-let json_of_header h =
-	let alg_str = (str_of_alg(h.alg)) in
-	`Assoc
-	  [	("typ", `String "JWT");
-		("alg", `String alg_str) ]
 
 let json_of_claims claims = 
 	let to_json = function
@@ -144,8 +137,8 @@ let json_of_claims claims =
 	`Assoc (convert_claims claims)
 
 let encode token =
-	let headj = json_of_header token.header in
-	let claimsj = json_of_claims token.payload.claims in
+	let headj = json_of_claims token.header in
+	let claimsj = json_of_claims token.payload in
 	let compile x = B64.encode (Yojson.Basic.to_string x) in
 	String.concat "." [compile headj ; compile claimsj ; "signature"]
 
@@ -164,4 +157,4 @@ let validate alg key token =
 	ignore(front,back);true
 
 let decode token key = 
-	if validate HS256 "" token then Some (parse token) else None
+	if validate HS256 "" token then Some (parse None token) else None
