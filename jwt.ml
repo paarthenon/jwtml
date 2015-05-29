@@ -2,15 +2,15 @@
 
 exception Jwt_format_error of string
 
+
 type value =
 	| String of string
 	| Date of int
 	| Float of float
 	| Integer of int
 	| Boolean of bool
-	| Array of value
-
-type dict = (string * value) list
+	| List of value list
+	| Dict of (string * value) list
 
 type algorithm = 
 	| HS256
@@ -23,8 +23,8 @@ type jwt_base = {
 	signature: string option;
 }
 type t =
-  {	header: dict; (* At this point the header is effectively useless, so I don't want to elevate metadata *)
-	payload: dict;
+  {	header: (string * value) list; (* At this point the header is effectively useless, so I don't want to elevate metadata *)
+	payload: (string * value) list;
 	signature: string option; }
 
 
@@ -64,9 +64,6 @@ let iat jwt = List.assoc "iat" jwt.payload |> function Date d -> Some d | _ -> N
 
 
 let jti jwt = List.assoc "aud" jwt.payload |> function Integer i -> Some i | _ -> None
-
-
-
 
 module StringExt = struct
 	let dequote str =
@@ -116,6 +113,29 @@ module B64 = struct
 		|> Cstruct.to_string
 end
 
+module Json = struct
+	let rec from_value = function
+		| String s -> `String s
+		| Float n -> `Float n
+		| Integer i -> `Int i
+		| Date d -> `Int d
+		| Boolean b -> `Bool b
+		| List l -> `List (List.map from_value l)
+		| Dict kvp -> `Assoc ( List.map (fun (k,v) -> (k, from_value v)) kvp )
+
+	let rec to_value = function
+		| `String s -> String s
+		| `Float f -> Float f
+		| `Int i -> Integer i
+		| `Date d -> Date d
+		| `Bool b -> Boolean b
+		| `List l -> List (List.map to_value l)
+		| `Assoc kvp -> Dict ( List.map (fun (k,v) -> (k, to_value v)) kvp )
+		| `Null -> raise (Jwt_format_error "Cannot currently support null")
+
+	let from_string s = to_value (Yojson.Basic.from_string s)
+	let to_string v = Yojson.Basic.to_string (from_value v)
+end
 
 
 let parse alg token =
@@ -124,17 +144,9 @@ let parse alg token =
 	|> List.map B64.decode
 	|> function
 		| header::payload::t ->
-			let open Yojson.Basic in
-
-			let claims_of_json json = match (from_string json) with 
-				| `Assoc list -> list
-					|> List.map (fun (a,b) -> (a, StringExt.dequote(to_string b)))
-					|> List.map (fun (a,b) -> (a, String b))
-				| _ -> raise (Jwt_format_error "Invalid Token")
-			in
-
-			let header_claims = claims_of_json header in
-			let payload_claims = claims_of_json payload in
+			let get_dict = function Dict d -> d | _ -> raise (Jwt_format_error "Improperly formatted header or payload") in
+			let header' = header |> Json.from_string  |> get_dict in
+			let payload' = payload |> Json.from_string |> get_dict in
 
 			let signature = match t with
 				| [] -> if alg = None then None else raise (Jwt_format_error "No signature present despite an algorithm being specified")
@@ -142,29 +154,17 @@ let parse alg token =
 				| _ -> raise @@ Jwt_format_error "Invalid Jwt structure. More than 3 parts"
 			in
 			{
-				header = header_claims;
-				payload = payload_claims;
+				header = header';
+				payload = payload';
 				signature = signature
 			}
 		| _ -> raise (Jwt_format_error "Improper input. Expected a period-delimited string with two or three parts")
 
-let json_of_claims claims = 
-	let to_json = function
-		| String s -> `String s
-		| Float n -> `Float n
-		| Integer i -> `Int i
-		| Date d -> `Int d
-		| Boolean b -> `Bool b
-	in
-	let rec convert_claims = function
-		| ((t, c)::tl) -> (t, to_json c)::convert_claims(tl)
-		| [] -> []
-	in
-	`Assoc (convert_claims claims)
+
 
 let encode token =
-	let headj = json_of_claims token.header in
-	let claimsj = json_of_claims token.payload in
+	let headj = Json.from_value (Dict token.header) in
+	let claimsj = Json.from_value (Dict token.payload) in
 	let compile x = B64.encode (Yojson.Basic.to_string x) in
 	String.concat "." [compile headj ; compile claimsj ; "signature"]
 
