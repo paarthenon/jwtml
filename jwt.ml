@@ -2,23 +2,20 @@
 
 exception Jwt_format_error of string
 
-type claim =
+type value =
 	| String of string
 	| Date of int
 	| Float of float
 	| Integer of int
 	| Boolean of bool
+	| Array of value
 
-type claims = (string * claim) list
+type dict = (string * value) list
 
 type algorithm = 
 	| HS256
 	| HS384
 	| HS512
-
-type jwt_header =
-	{ alg: algorithm option }
-
 
 type jwt_base = {
 	header: string;
@@ -26,9 +23,49 @@ type jwt_base = {
 	signature: string option;
 }
 type t =
-  {	header: claims; (* At this point the header is effectively useless *)
-	payload: claims;
+  {	header: dict; (* At this point the header is effectively useless, so I don't want to elevate metadata *)
+	payload: dict;
 	signature: string option; }
+
+
+(*
+	The algorithm translation functions are not as useful as they first seem.
+	There is a security issue with JWTs in that you need to validate the token
+	but in order to validate the token you must first already trust the token
+	to give you an accurate algorithm field.
+
+	In real applications programmers will generally know what hash algorithm
+	is being used and so our parse functionality will require an algorithm be
+	specified.
+*)
+let alg_of_str = function
+	| "HS256" -> Some HS256
+	| "HS384" -> Some HS384
+	| "HS512" -> Some HS512
+	| "None" -> None
+	| _ -> raise (Jwt_format_error "Unsupported algorithm")
+
+let str_of_alg = function
+	| Some HS256 -> "HS256"
+	| Some HS384 -> "HS384"
+	| Some HS512 -> "HS512"
+	| None -> "none"
+
+let alg jwt = List.assoc "alg" jwt.header |> function String s -> Some (alg_of_str s) | _ -> None
+
+let iss jwt = List.assoc "iss" jwt.payload |> function String s -> Some s | _ -> None
+let sub jwt = List.assoc "sub" jwt.payload |> function String s -> Some s | _ -> None
+let aud jwt = List.assoc "aud" jwt.payload |> function String s -> Some s | _ -> None
+
+(* Apparently OCaml does not have a built-in date type. That's... bad. *)
+let exp jwt = List.assoc "exp" jwt.payload |> function Date d -> Some d | _ -> None
+let exp jwt = List.assoc "exp" jwt.payload |> function Date d -> Some d | _ -> None
+let iat jwt = List.assoc "iat" jwt.payload |> function Date d -> Some d | _ -> None
+
+
+let jti jwt = List.assoc "aud" jwt.payload |> function Integer i -> Some i | _ -> None
+
+
 
 
 module StringExt = struct
@@ -79,18 +116,7 @@ module B64 = struct
 		|> Cstruct.to_string
 end
 
-let alg_of_str = function
-	| "HS256" -> Some HS256
-	| "HS384" -> Some HS384
-	| "HS512" -> Some HS512
-	| "None" -> None
-	| _ -> raise (Jwt_format_error "Unsupported algorithm")
 
-let str_of_alg = function
-	| Some HS256 -> "HS256"
-	| Some HS384 -> "HS384"
-	| Some HS512 -> "HS512"
-	| None -> "none"
 
 let parse alg token =
 	token
