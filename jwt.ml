@@ -1,4 +1,8 @@
-(* A simple JWT library for OCaml *)
+(* 
+	A simple JWT library for OCaml
+
+	Does NOT support nested tokens.
+*)
 
 exception Jwt_format_error of string
 
@@ -51,6 +55,8 @@ let str_of_alg = function
 	| Some HS512 -> "HS512"
 	| None -> "none"
 
+
+(* JWT Reserved Claims *)
 let alg jwt = List.assoc "alg" jwt.header |> function String s -> Some (alg_of_str s) | _ -> None
 
 let iss jwt = List.assoc "iss" jwt.payload |> function String s -> Some s | _ -> None
@@ -174,13 +180,20 @@ let validate alg key token =
 		- Verify signature is accurate
 		- 
 	*)
-	let rec split_last sofar = function
-		| h::t -> split_last (h::sofar) t
-		| [x] -> (List.rev sofar, Some x)
-		| [] -> ([], None)
+	let split_last l = 
+		let rec helper sofar = function
+			| [] -> ([], None)
+			| [x] -> (List.rev sofar, Some x)
+			| h::t -> helper (h::sofar) t
+		in
+		helper [] l
 	in
-	let (front, back) = split_last [] [] in
-	ignore(front,back);true
+	let (front, back) = Str.split (Str.regexp "\\.") token |> split_last in
+	let payload, signature =
+		(Cstruct.of_string (String.concat "." front)),
+		back |> function Some s -> Some (Cstruct.of_string s) | None -> None
+	in
+	SignedToken.verify payload signature alg key
 
 let decode token key = 
-	if validate HS256 "" token then Some (parse None token) else None
+	if validate HS256 (Cstruct.of_string "") token then Some (parse None token) else None
