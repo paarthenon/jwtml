@@ -172,7 +172,9 @@ let encode token =
 	let headj = Json.from_value (Dict token.header) in
 	let claimsj = Json.from_value (Dict token.payload) in
 	let compile x = B64.encode (Yojson.Basic.to_string x) in
-	String.concat "." [compile headj ; compile claimsj ; "signature"]
+	match token.signature with
+		| Some s -> String.concat "." [compile headj; compile claimsj; s]
+		| None -> String.concat "." [compile headj; compile claimsj]
 
 let validate alg key token =
 	(*
