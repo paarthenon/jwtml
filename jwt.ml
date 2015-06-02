@@ -26,7 +26,7 @@ type jwt_base = {
 	signature: string option;
 }
 type t =
-  {	header: (string * value) list; (* At this point the header is effectively useless, so I don't want to elevate metadata *)
+  {	header: (string * value) list;
 	payload: (string * value) list;
 	signature: string option; }
 
@@ -41,21 +41,96 @@ type t =
 	is being used and so our parse functionality will require an algorithm be
 	specified.
 *)
-let (>>=) opt f = match opt with Some x -> Some (f x) | None -> None
+module Guts = struct (* Usually referred to as 'Internals' *)
+	let (>>=) opt f = match opt with Some x -> Some (f x) | None -> None
 
-let alg_of_str = function
-	| "HS256" -> Some HS256
-	| "HS384" -> Some HS384
-	| "HS512" -> Some HS512
-	| "None" -> None
-	| _ -> raise (Jwt_format_error "Unsupported algorithm")
+	let alg_of_str = function
+		| "HS256" -> Some HS256
+		| "HS384" -> Some HS384
+		| "HS512" -> Some HS512
+		| "none" -> None
+		| _ -> raise (Jwt_format_error "Unsupported algorithm")
 
-let str_of_alg = function
-	| Some HS256 -> "HS256"
-	| Some HS384 -> "HS384"
-	| Some HS512 -> "HS512"
-	| None -> "none"
+	let str_of_alg = function
+		| Some HS256 -> "HS256"
+		| Some HS384 -> "HS384"
+		| Some HS512 -> "HS512"
+		| None -> "none"
 
+	module StringExt = struct
+		let dequote str =
+			let len = String.length str in
+			if str.[0] = '\"' && str.[len-1] = '\"' then
+				String.sub str 1 (len - 2)
+			else
+				str
+	end
+
+	module SignedToken = struct
+		open Nocrypto.Hash
+
+		let signing_func = function
+			| HS256 -> SHA256.hmac
+			| HS384 -> SHA384.hmac
+			| HS512 -> SHA512.hmac
+
+		let signature data alg key = 
+			(signing_func alg) ~key:key data
+
+		let verify data input_sig alg key = match input_sig with
+			| Some s -> s = (signature data alg key)
+			| None -> false
+	end
+
+	module B64 = struct
+		let fix_padding str = 
+			let len = Bytes.length str in
+			let (q,r) = len / 4, len mod 4 in
+			if r = 0 then str else
+				let b64_proper = Bytes.make (4 * (q + 1)) '=' in
+				Bytes.blit str 0 b64_proper 0 len;
+				b64_proper
+
+		let decode str =
+			str
+			|> fix_padding
+			|> Cstruct.of_string
+			|> Nocrypto.Base64.decode
+			|> Cstruct.to_string
+
+		let encode str =
+			str
+			|> Cstruct.of_string
+			|> Nocrypto.Base64.encode
+			|> Cstruct.to_string
+	end
+
+
+	(* Wait a minute -- Yojson is using polymorphic variants. I likely don't need this at all *)
+	module Json = struct
+		let rec from_value = function
+			| String s -> `String s
+			| Float n -> `Float n
+			| Integer i -> `Int i
+			| Date d -> `Int d
+			| Boolean b -> `Bool b
+			| List l -> `List (List.map from_value l)
+			| Dict kvp -> `Assoc ( List.map (fun (k,v) -> (k, from_value v)) kvp )
+
+		let rec to_value = function
+			| `String s -> String s
+			| `Float f -> Float f
+			| `Int i -> Integer i
+			| `Date d -> Date d
+			| `Bool b -> Boolean b
+			| `List l -> List (List.map to_value l)
+			| `Assoc kvp -> Dict ( List.map (fun (k,v) -> (k, to_value v)) kvp )
+			| `Null -> raise (Jwt_format_error "Cannot currently support null")
+
+		let from_string s = to_value (Yojson.Basic.from_string s)
+		let to_string v = Yojson.Basic.to_string (from_value v)
+	end
+end
 
 (* JWT Reserved Claims *)
 let alg jwt = List.assoc "alg" jwt.header |> function String s -> Some (alg_of_str s) | _ -> None
@@ -69,82 +144,7 @@ let exp jwt = List.assoc "exp" jwt.payload |> function Date d -> Some d | _ -> N
 let exp jwt = List.assoc "exp" jwt.payload |> function Date d -> Some d | _ -> None
 let iat jwt = List.assoc "iat" jwt.payload |> function Date d -> Some d | _ -> None
 
-
 let jti jwt = List.assoc "aud" jwt.payload |> function Integer i -> Some i | _ -> None
-
-module StringExt = struct
-	let dequote str =
-		let len = String.length str in
-		if str.[0] = '\"' && str.[len-1] = '\"' then
-			String.sub str 1 (len - 2)
-		else
-			str
-end
-
-module SignedToken = struct
-	open Nocrypto.Hash
-
-	let signing_func = function
-		| HS256 -> SHA256.hmac
-		| HS384 -> SHA384.hmac
-		| HS512 -> SHA512.hmac
-
-	let signature data alg key = 
-		(signing_func alg) ~key:key data
-
-	let verify data input_sig alg key = match input_sig with
-		| Some s -> s = (signature data alg key)
-		| None -> false
-end
-
-module B64 = struct
-	let fix_padding str = 
-		let len = Bytes.length str in
-		let (q,r) = len / 4, len mod 4 in
-		if r = 0 then str else
-			let b64_proper = Bytes.make (4 * (q + 1)) '=' in
-			Bytes.blit str 0 b64_proper 0 len;
-			b64_proper
-
-	let decode str =
-		str
-		|> fix_padding
-		|> Cstruct.of_string
-		|> Nocrypto.Base64.decode
-		|> Cstruct.to_string
-
-	let encode str =
-		str
-		|> Cstruct.of_string
-		|> Nocrypto.Base64.encode
-		|> Cstruct.to_string
-end
-
-(* Wait a minute -- Yojson is using polymorphic variants. I likely don't need this at all *)
-module Json = struct
-	let rec from_value = function
-		| String s -> `String s
-		| Float n -> `Float n
-		| Integer i -> `Int i
-		| Date d -> `Int d
-		| Boolean b -> `Bool b
-		| List l -> `List (List.map from_value l)
-		| Dict kvp -> `Assoc ( List.map (fun (k,v) -> (k, from_value v)) kvp )
-
-	let rec to_value = function
-		| `String s -> String s
-		| `Float f -> Float f
-		| `Int i -> Integer i
-		| `Date d -> Date d
-		| `Bool b -> Boolean b
-		| `List l -> List (List.map to_value l)
-		| `Assoc kvp -> Dict ( List.map (fun (k,v) -> (k, to_value v)) kvp )
-		| `Null -> raise (Jwt_format_error "Cannot currently support null")
-
-	let from_string s = to_value (Yojson.Basic.from_string s)
-	let to_string v = Yojson.Basic.to_string (from_value v)
-end
-
 
 let parse token =
 	token
