@@ -120,6 +120,7 @@ module B64 = struct
 		|> Cstruct.to_string
 end
 
+(* Wait a minute -- Yojson is using polymorphic variants. I likely don't need this at all *)
 module Json = struct
 	let rec from_value = function
 		| String s -> `String s
@@ -205,4 +206,9 @@ let validate alg key token =
 	SignedToken.verify payload signature alg (Cstruct.of_string key)
 
 let decode alg key token = 
+	(*
+		- verify signed token
+		- parse token
+		- Otherwise list of errors (or exceptions, though that would suck). 
+	*)
 	if validate HS256 key token then Some (parse token) else None
