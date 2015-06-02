@@ -6,7 +6,6 @@
 
 exception Jwt_format_error of string
 
-
 type value =
 	| String of string
 	| Date of int
@@ -42,6 +41,8 @@ type t =
 	is being used and so our parse functionality will require an algorithm be
 	specified.
 *)
+let (>>=) opt f = match opt with Some x -> Some (f x) | None -> None
+
 let alg_of_str = function
 	| "HS256" -> Some HS256
 	| "HS384" -> Some HS384
@@ -193,9 +194,11 @@ let validate alg key token =
 	let (front, back) = Str.split (Str.regexp "\\.") token |> split_last in
 	let payload, signature =
 		(Cstruct.of_string (String.concat "." front)),
-		back |> function Some s -> Some (Cstruct.of_string s) | None -> None
+		back
+			>>= B64.decode
+			>>= Cstruct.of_string
 	in
-	SignedToken.verify payload signature alg key
+	SignedToken.verify payload signature alg (Cstruct.of_string key)
 
-let decode token key = 
-	if validate HS256 (Cstruct.of_string "") token then Some (parse None token) else None
+let decode alg key token = 
+	if validate HS256 key token then Some (parse None token) else None
