@@ -6,15 +6,6 @@
 
 exception Jwt_format_error of string
 
-type value =
-	| String of string
-	| Date of int
-	| Float of float
-	| Integer of int
-	| Boolean of bool
-	| List of value list
-	| Dict of (string * value) list
-
 type algorithm = 
 	| HS256
 	| HS384
@@ -26,8 +17,8 @@ type jwt_base = {
 	signature: string option;
 }
 type t =
-  {	header: (string * value) list;
-	payload: (string * value) list;
+  {	header: (string * Yojson.Basic.json) list;
+	payload: (string * Yojson.Basic.json) list;
 	signature: string option; }
 
 
@@ -104,47 +95,23 @@ module Guts = struct (* Usually referred to as 'Internals' *)
 			|> Nocrypto.Base64.encode
 			|> Cstruct.to_string
 	end
-
-
-	(* Wait a minute -- Yojson is using polymorphic variants. I likely don't need this at all *)
-	module Json = struct
-		let rec from_value = function
-			| String s -> `String s
-			| Float n -> `Float n
-			| Integer i -> `Int i
-			| Date d -> `Int d
-			| Boolean b -> `Bool b
-			| List l -> `List (List.map from_value l)
-			| Dict kvp -> `Assoc ( List.map (fun (k,v) -> (k, from_value v)) kvp )
-
-		let rec to_value = function
-			| `String s -> String s
-			| `Float f -> Float f
-			| `Int i -> Integer i
-			| `Date d -> Date d
-			| `Bool b -> Boolean b
-			| `List l -> List (List.map to_value l)
-			| `Assoc kvp -> Dict ( List.map (fun (k,v) -> (k, to_value v)) kvp )
-			| `Null -> raise (Jwt_format_error "Cannot currently support null")
-
-		let from_string s = to_value (Yojson.Basic.from_string s)
-		let to_string v = Yojson.Basic.to_string (from_value v)
-	end
 end
 
-(* JWT Reserved Claims *)
-let alg jwt = List.assoc "alg" jwt.header |> function String s -> Some (alg_of_str s) | _ -> None
+open Guts
 
-let iss jwt = List.assoc "iss" jwt.payload |> function String s -> Some s | _ -> None
-let sub jwt = List.assoc "sub" jwt.payload |> function String s -> Some s | _ -> None
-let aud jwt = List.assoc "aud" jwt.payload |> function String s -> Some s | _ -> None
+(* JWT Reserved Claims *)
+let alg jwt = List.assoc "alg" jwt.header |> function `String s -> Some (alg_of_str s) | _ -> None
+
+let iss jwt = List.assoc "iss" jwt.payload |> function `String s -> Some s | _ -> None
+let sub jwt = List.assoc "sub" jwt.payload |> function `String s -> Some s | _ -> None
+let aud jwt = List.assoc "aud" jwt.payload |> function `String s -> Some s | _ -> None
 
 (* Apparently OCaml does not have a built-in date type. That's... bad. *)
-let exp jwt = List.assoc "exp" jwt.payload |> function Date d -> Some d | _ -> None
-let exp jwt = List.assoc "exp" jwt.payload |> function Date d -> Some d | _ -> None
-let iat jwt = List.assoc "iat" jwt.payload |> function Date d -> Some d | _ -> None
+let exp jwt = List.assoc "exp" jwt.payload |> function `Int d -> Some d | _ -> None
+let exp jwt = List.assoc "nbf" jwt.payload |> function `Int d -> Some d | _ -> None
+let iat jwt = List.assoc "iat" jwt.payload |> function `Int d -> Some d | _ -> None
 
-let jti jwt = List.assoc "aud" jwt.payload |> function Integer i -> Some i | _ -> None
+let jti jwt = List.assoc "aud" jwt.payload |> function `Int i -> Some i | _ -> None
 
 let parse token =
 	token
@@ -152,12 +119,12 @@ let parse token =
 	|> List.map B64.decode
 	|> function
 		| header::payload::t ->
-			let get_dict = function Dict d -> d | _ -> raise (Jwt_format_error "Improperly formatted header or payload") in
-			let header' = header |> Json.from_string  |> get_dict in
-			let payload' = payload |> Json.from_string |> get_dict in
+			let get_dict = function `Assoc d -> d | _ -> raise (Jwt_format_error "Improperly formatted header or payload") in
+			let header' = header |> Yojson.Basic.from_string |> get_dict in
+			let payload' = payload |> Yojson.Basic.from_string |> get_dict in
 
 			let alg = List.assoc "alg" header'
-				|> (function String s -> s | _ -> raise (Jwt_format_error "Algorithm is not a string"))
+				|> (function `String s -> s | _ -> raise (Jwt_format_error "Algorithm is not a string"))
 				|> alg_of_str
 			in
 			let signature = match t with
@@ -175,12 +142,10 @@ let parse token =
 
 
 let encode token =
-	let headj = Json.from_value (Dict token.header) in
-	let claimsj = Json.from_value (Dict token.payload) in
-	let compile x = B64.encode (Yojson.Basic.to_string x) in
+	let compile x = `Assoc x |> Yojson.Basic.to_string |> B64.encode in
 	match token.signature with
-		| Some s -> String.concat "." [compile headj; compile claimsj; s]
-		| None -> String.concat "." [compile headj; compile claimsj]
+		| Some s -> String.concat "." [compile token.header; compile token.payload; s]
+		| None -> String.concat "." [compile token.header; compile token.payload]
 
 let validate alg key token =
 	(*
