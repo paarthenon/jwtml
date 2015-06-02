@@ -145,7 +145,7 @@ module Json = struct
 end
 
 
-let parse alg token =
+let parse token =
 	token
 	|> Str.split (Str.regexp "\\.")
 	|> List.map B64.decode
@@ -155,6 +155,10 @@ let parse alg token =
 			let header' = header |> Json.from_string  |> get_dict in
 			let payload' = payload |> Json.from_string |> get_dict in
 
+			let alg = List.assoc "alg" header'
+				|> (function String s -> s | _ -> raise (Jwt_format_error "Algorithm is not a string"))
+				|> alg_of_str
+			in
 			let signature = match t with
 				| [] -> if alg = None then None else raise (Jwt_format_error "No signature present despite an algorithm being specified")
 				| [x] -> Some x
@@ -191,14 +195,14 @@ let validate alg key token =
 		in
 		helper [] l
 	in
-	let (front, back) = Str.split (Str.regexp "\\.") token |> split_last in
+	let (front, final) = Str.split (Str.regexp "\\.") token |> split_last in
 	let payload, signature =
 		(Cstruct.of_string (String.concat "." front)),
-		back
+		final
 			>>= B64.decode
 			>>= Cstruct.of_string
 	in
 	SignedToken.verify payload signature alg (Cstruct.of_string key)
 
 let decode alg key token = 
-	if validate HS256 key token then Some (parse None token) else None
+	if validate HS256 key token then Some (parse token) else None
