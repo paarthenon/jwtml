@@ -11,30 +11,23 @@ type algorithm =
 	| HS384
 	| HS512
 
-type jwt_base = {
-	header: string;
-	payload: string;
-	signature: string option;
-}
 type t =
   {	header: (string * Yojson.Basic.json) list;
 	payload: (string * Yojson.Basic.json) list;
 	signature: string option; }
 
-
-(*
-	The algorithm translation functions are not as useful as they first seem.
-	There is a security issue with JWTs in that you need to validate the token
-	but in order to validate the token you must first already trust the token
-	to give you an accurate algorithm field.
-
-	In real applications programmers will generally know what hash algorithm
-	is being used and so our parse functionality will require an algorithm be
-	specified.
-*)
 module Guts = struct (* Usually referred to as 'Internals' *)
 	let (>>=) opt f = match opt with Some x -> Some (f x) | None -> None
+	(*
+		The algorithm translation functions are not as useful as they first seem.
+		There is a security issue with JWTs in that you need to validate the token
+		but in order to validate the token you must first already trust the token
+		to give you an accurate algorithm field.
 
+		In real applications programmers will generally know what hash algorithm
+		is being used and so our parse functionality will require an algorithm be
+		specified.
+	*)
 	let alg_of_str = function
 		| "HS256" -> Some HS256
 		| "HS384" -> Some HS384
@@ -108,7 +101,7 @@ let aud jwt = List.assoc "aud" jwt.payload |> function `String s -> Some s | _ -
 
 (* Apparently OCaml does not have a built-in date type. That's... bad. *)
 let exp jwt = List.assoc "exp" jwt.payload |> function `Int d -> Some d | _ -> None
-let exp jwt = List.assoc "nbf" jwt.payload |> function `Int d -> Some d | _ -> None
+let nbf jwt = List.assoc "nbf" jwt.payload |> function `Int d -> Some d | _ -> None
 let iat jwt = List.assoc "iat" jwt.payload |> function `Int d -> Some d | _ -> None
 
 let jti jwt = List.assoc "aud" jwt.payload |> function `Int i -> Some i | _ -> None
@@ -123,6 +116,7 @@ let parse token =
 			let header' = header |> Yojson.Basic.from_string |> get_dict in
 			let payload' = payload |> Yojson.Basic.from_string |> get_dict in
 
+			(* This may be more fitting in token validation *)
 			let alg = List.assoc "alg" header'
 				|> (function `String s -> s | _ -> raise (Jwt_format_error "Algorithm is not a string"))
 				|> alg_of_str
@@ -139,20 +133,15 @@ let parse token =
 			}
 		| _ -> raise (Jwt_format_error "Improper input. Expected a period-delimited string with two or three parts")
 
-
-
-let encode token =
+let encode alg key token =
 	let compile x = `Assoc x |> Yojson.Basic.to_string |> B64.encode in
+	
+	(* I feel like there's a more elegant way to do this *)
 	match token.signature with
-		| Some s -> String.concat "." [compile token.header; compile token.payload; s]
+		| Some s -> String.concat "." [compile token.header; compile token.payload; B64.encode s]
 		| None -> String.concat "." [compile token.header; compile token.payload]
 
 let validate alg key token =
-	(*
-		- Verify token structure (accomplished through parsing)
-		- Verify signature is accurate
-		- 
-	*)
 	let split_last l = 
 		let rec helper sofar = function
 			| [] -> ([], None)
@@ -162,9 +151,8 @@ let validate alg key token =
 		helper [] l
 	in
 	let (front, final) = Str.split (Str.regexp "\\.") token |> split_last in
-	let payload, signature =
-		(Cstruct.of_string (String.concat "." front)),
-		final
+	let payload = (Cstruct.of_string (String.concat "." front)) in
+	let signature = final
 			>>= B64.decode
 			>>= Cstruct.of_string
 	in
