@@ -5,6 +5,7 @@
 *)
 
 exception Jwt_format_error of string
+exception Jwt_error of string
 
 type algorithm = 
 	| HS256
@@ -136,16 +137,19 @@ let parse token =
 let encode algorithm key token =
 	let compile x = `Assoc x |> Yojson.Basic.to_string |> B64.encode in
 
-	let alg = alg token in
-	let signed_token = match alg with
-		| Some s -> 
+	let signed_token = match (alg token) with
+		| Some alg' when alg' = algorithm -> 
 			let signature = [token.header; token.payload]
 				|> List.map compile
 				|> String.concat "." 
-				|> SignedToken.sign s key 
+				|> SignedToken.sign alg' key 
 				|> Cstruct.to_string
 			in
 			{token with signature = Some signature }
+		| Some alg' -> 
+			let err_str = (Printf.sprintf "Algorithm mismatch! Jwt has algorithm %s. %s was expected." 
+				(str_of_alg (Some alg')) (str_of_alg (Some algorithm))) in
+			raise (Jwt_error err_str)
 		| None -> token
 	in
 	(* I feel like there's a more elegant way to do this *)
