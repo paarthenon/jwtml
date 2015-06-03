@@ -113,10 +113,14 @@ let parse token =
 	|> List.map B64.decode
 	|> function
 		| header::payload::t ->
-			let get_dict = function `Assoc d -> d | _ -> raise (Jwt_format_error "Improperly formatted header or payload") in
-			let header' = header |> Yojson.Basic.from_string |> get_dict in
-			let payload' = payload |> Yojson.Basic.from_string |> get_dict in
-
+			(* extract dicts *)
+			let [header'; payload'] = 
+				[header; payload]
+				|> List.map Yojson.Basic.from_string
+				|> List.map (function
+					| `Assoc d -> d
+					| _ -> raise (Jwt_format_error "Improperly formatted header or payload"))
+			in
 			(* This may be more fitting in token validation *)
 			let alg = List.assoc "alg" header'
 				|> (function `String s -> s | _ -> raise (Jwt_format_error "Algorithm is not a string"))
