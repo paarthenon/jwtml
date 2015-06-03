@@ -61,6 +61,7 @@ module Guts = struct (* Usually referred to as 'Internals' *)
 
 		let sign alg key data = 
 			(signing_func alg) ~key:(Cstruct.of_string key) (Cstruct.of_string data)
+			|> Cstruct.to_string
 
 		let verify data input_sig alg key = match input_sig with
 			| Some s -> s = (sign alg key data)
@@ -147,9 +148,8 @@ let encode algorithm key token =
 				|> List.map compile
 				|> String.concat "." 
 				|> SignedToken.sign alg' key 
-				|> Cstruct.to_string
 			in
-			{token with signature = Some signature }
+			{ token with signature = Some signature }
 		| Some alg' -> 
 			let err_str = (Printf.sprintf "Algorithm mismatch! Jwt has algorithm %s. %s was expected." 
 				(str_of_alg (Some alg')) (str_of_alg (Some algorithm))) in
@@ -174,7 +174,6 @@ let validate alg key token =
 	let payload = (String.concat "." front) in
 	let signature = final
 			>>= B64.decode
-			>>= Cstruct.of_string
 	in
 	SignedToken.verify payload signature alg key
 
