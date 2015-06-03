@@ -58,11 +58,11 @@ module Guts = struct (* Usually referred to as 'Internals' *)
 			| HS384 -> SHA384.hmac
 			| HS512 -> SHA512.hmac
 
-		let signature data alg key = 
-			(signing_func alg) ~key:key data
+		let sign alg key data = 
+			(signing_func alg) ~key:(Cstruct.of_string key) (Cstruct.of_string data)
 
 		let verify data input_sig alg key = match input_sig with
-			| Some s -> s = (signature data alg key)
+			| Some s -> s = (sign alg key data)
 			| None -> false
 	end
 
@@ -93,7 +93,7 @@ end
 open Guts
 
 (* JWT Reserved Claims *)
-let alg jwt = List.assoc "alg" jwt.header |> function `String s -> Some (alg_of_str s) | _ -> None
+let alg jwt = List.assoc "alg" jwt.header |> function `String s -> alg_of_str s | _ -> None
 
 let iss jwt = List.assoc "iss" jwt.payload |> function `String s -> Some s | _ -> None
 let sub jwt = List.assoc "sub" jwt.payload |> function `String s -> Some s | _ -> None
@@ -133,13 +133,25 @@ let parse token =
 			}
 		| _ -> raise (Jwt_format_error "Improper input. Expected a period-delimited string with two or three parts")
 
-let encode alg key token =
+let encode algorithm key token =
 	let compile x = `Assoc x |> Yojson.Basic.to_string |> B64.encode in
-	
+
+	let alg = alg token in
+	let signed_token = match alg with
+		| Some s -> 
+			let signature = [token.header; token.payload]
+				|> List.map compile
+				|> String.concat "." 
+				|> SignedToken.sign s key 
+				|> Cstruct.to_string
+			in
+			{token with signature = Some signature }
+		| None -> token
+	in
 	(* I feel like there's a more elegant way to do this *)
-	match token.signature with
-		| Some s -> String.concat "." [compile token.header; compile token.payload; B64.encode s]
-		| None -> String.concat "." [compile token.header; compile token.payload]
+	match signed_token.signature with
+		| Some s -> String.concat "." [compile signed_token.header; compile signed_token.payload; B64.encode s]
+		| None -> String.concat "." [compile signed_token.header; compile signed_token.payload]
 
 let validate alg key token =
 	let split_last l = 
@@ -151,12 +163,12 @@ let validate alg key token =
 		helper [] l
 	in
 	let (front, final) = Str.split (Str.regexp "\\.") token |> split_last in
-	let payload = (Cstruct.of_string (String.concat "." front)) in
+	let payload = (String.concat "." front) in
 	let signature = final
 			>>= B64.decode
 			>>= Cstruct.of_string
 	in
-	SignedToken.verify payload signature alg (Cstruct.of_string key)
+	SignedToken.verify payload signature alg key
 
 let decode alg key token = 
 	(*
