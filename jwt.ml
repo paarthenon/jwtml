@@ -161,7 +161,7 @@ let encode algorithm key token =
 		| Some s -> String.concat "." [compile signed_token.header; compile signed_token.payload; B64.encode s]
 		| None -> String.concat "." [compile signed_token.header; compile signed_token.payload]
 
-let validate alg key token =
+let validate_signature alg key token =
 	let split_last l = 
 		let rec helper sofar = function
 			| [] -> ([], None)
@@ -173,9 +173,17 @@ let validate alg key token =
 	let (front, final) = Str.split (Str.regexp "\\.") token |> split_last in
 	let payload = (String.concat "." front) in
 	let signature = final
-			>>= B64.decode
+		>>= B64.decode
 	in
 	SignedToken.verify payload signature alg key
+
+module Validation = struct
+	let test_exp token = match (exp token) with Some s -> (float_of_int s) > (Unix.time ()) | None -> false
+	let test_nbf token = match (nbf token) with Some s -> (float_of_int s) < (Unix.time ()) | None -> false
+end
+let validate token =
+	[Validation.test_exp; Validation.test_nbf]
+	|> List.fold_left (fun a f -> a && (f token)) true
 
 let decode alg key token = 
 	(*
@@ -183,4 +191,7 @@ let decode alg key token =
 		- parse token
 		- Otherwise list of errors (or exceptions, though that would suck). 
 	*)
-	if validate HS256 key token then Some (parse token) else None
+	let token' = if validate_signature HS256 key token then Some (parse token) else None in
+	match token' with
+		| Some t -> if validate t then token' else None
+		| None -> None
