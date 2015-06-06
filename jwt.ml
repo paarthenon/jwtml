@@ -12,6 +12,8 @@ type algorithm =
 	| HS384
 	| HS512
 
+type key = algorithm * string
+
 type t =
   {	header: (string * Yojson.Basic.json) list;
 	payload: (string * Yojson.Basic.json) list;
@@ -139,7 +141,7 @@ let parse token =
 			}
 		| _ -> raise (Jwt_format_error "Improper input. Expected a period-delimited string with two or three parts")
 
-let encode algorithm key token =
+let encode (algorithm, key) token =
 	let compile x = `Assoc x |> Yojson.Basic.to_string |> B64.encode in
 
 	let signed_token = match (alg token) with
@@ -185,7 +187,7 @@ let validate token =
 	[Validation.test_exp; Validation.test_nbf]
 	|> List.fold_left (fun a f -> a && (f token)) true
 
-let decode alg key token = 
+let decode (alg,key) token = 
 	(*
 		- verify signed token
 		- parse token
@@ -195,3 +197,8 @@ let decode alg key token =
 	match token' with
 		| Some t -> if validate t then token' else None
 		| None -> None
+
+let claim str jwt = List.assoc str jwt.payload
+
+let add_claim str json jwt = 
+	{ jwt with payload = (str, json)::jwt.payload }
