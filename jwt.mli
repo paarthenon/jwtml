@@ -12,7 +12,7 @@ val parse : string -> t (*TODO: T result*)
 
 val encode : key -> t -> string
 
-val decode : key -> string -> t option
+val decode : key -> ?validate:(t -> bool) -> string -> t option
 
 (* claim manipulation *)
 val claim : string -> t -> Yojson.Basic.json
@@ -35,3 +35,4 @@ val exp : t -> int option
 val nbf : t -> int option
 val iat : t -> int option
 val jti : t -> int option
+

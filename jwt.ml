@@ -183,11 +183,11 @@ module Validation = struct
 	let test_exp token = match (exp token) with Some s -> (float_of_int s) > (Unix.time ()) | None -> false
 	let test_nbf token = match (nbf token) with Some s -> (float_of_int s) < (Unix.time ()) | None -> false
 end
-let validate token =
+let internal_validate token =
 	[Validation.test_exp; Validation.test_nbf]
 	|> List.fold_left (fun a f -> a && (f token)) true
 
-let decode (alg,key) token = 
+let decode (alg,key) ?(validate = internal_validate) token = 
 	(*
 		- verify signed token
 		- parse token
