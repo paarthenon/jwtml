@@ -1,8 +1,0 @@
-#!/bin/zsh
-cd src
-ocamlfind ocamlc \
-	-package nocrypto,yojson -g -linkpkg \
-		b64.mli \
-		b64.ml  \
-		-a -o ../jwt.cma
-cd ..
