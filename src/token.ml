@@ -133,13 +133,13 @@ let validate_signature alg key token =
 			| Some s -> Signing.verify (alg, key) s payload
 			| None -> false)
 
-let decode cert_key ?validate token = 
+let decode ?key ?validate token = 
 	(*
 		- verify signed token
 		- parse token
 		- Otherwise list of errors (or exceptions, though that would suck). 
 	*)
-	let valid_cert = match cert_key with
+	let valid_cert = match key with
 		| Some (alg, key) -> validate_signature alg key token
 		| None -> true
 	in

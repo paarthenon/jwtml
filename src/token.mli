@@ -3,7 +3,7 @@ open Signing
 type t 
 
 val encode : key -> t -> string (*TODO: change key to key option*)
-val decode : key option -> ?validate:(t -> bool) -> string -> t option
+val decode : ?key:Signing.key -> ?validate:(t -> bool) -> string -> t option
 
 (* claim manipulation *)
 val claim : string -> t -> Yojson.Basic.json
