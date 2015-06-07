@@ -5,7 +5,6 @@ let test_nbf time token = match (nbf token) with Some s -> (float_of_int s) < ti
 
 let none _ = true
 let date token =
-	[test_exp; test_nbf] 
-	|> List.fold_left (fun a f -> a && f (Unix.time ()) token) true
+	test_exp (Unix.time ()) token && test_nbf (Unix.time ()) token
 let trust _ = true
 let unique _ = true
