@@ -8,3 +8,5 @@ JwtML will operate on the level of strings and custom Jwt types, no bit mashing 
 ## Status
 
 jwtml is currently a minimum viable product. Parsing is functional and encoding *technically* works but is not yet user friendly. There is minimal token validation. I will begin putting items in the issue tracker and responding to them. 
+
+At the moment various submodules are available at the top-level. This will soon be removed.
