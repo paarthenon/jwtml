@@ -1,19 +1,12 @@
-type algorithm = 
-	| HS256
-	| HS384
-	| HS512
 
-type t
-
-type key = algorithm * string
+type t 
 
 val encode : key -> t -> string
-
 val decode : key -> ?validate:(t -> bool) -> string -> t option
 
 (* claim manipulation *)
 val claim : string -> t -> Yojson.Basic.json
-
+val claims : t -> (string * Yojson.Basic.json) list
 val add_claim : string -> Yojson.Basic.json -> t -> t
 
 (* Meta info *)
@@ -34,16 +27,12 @@ val iat : t -> int option
 val jti : t -> int option
 
 module Guts : sig
+	val alg_of_str : string -> algorithm option
+	val str_of_alg : algorithm option -> string
+
 	module B64 : sig
 		val encode : string -> string
 		val decode : string -> string
 	end
 end
 
-module Validation : sig
-	(* val _ : t -> bool (* future type *)*)
-	val none : t -> bool
-	val date : t -> bool (* float -> t -> bool *)
-	val trust : t -> bool (* trust_info -> t -> bool *)
-	val unique : t -> bool (* jwt_registry -> t -> bool *)
-end
