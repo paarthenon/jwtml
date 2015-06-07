@@ -180,14 +180,17 @@ let validate_signature alg key token =
 	SignedToken.verify payload signature alg key
 
 module Validation = struct
-	let test_exp token = match (exp token) with Some s -> (float_of_int s) > (Unix.time ()) | None -> false
-	let test_nbf token = match (nbf token) with Some s -> (float_of_int s) < (Unix.time ()) | None -> false
+	let test_exp time token = match (exp token) with Some s -> (float_of_int s) > time | None -> false
+	let test_nbf time token = match (nbf token) with Some s -> (float_of_int s) < time | None -> false
+	let none _ = true
+	let date token =
+		[test_exp; test_nbf] 
+		|> List.fold_left (fun a f -> a && f (Unix.time ()) token) true
+	let trust _ = true
+	let unique _ = true
 end
-let internal_validate token =
-	[Validation.test_exp; Validation.test_nbf]
-	|> List.fold_left (fun a f -> a && (f token)) true
 
-let decode (alg,key) ?(validate = internal_validate) token = 
+let decode (alg,key) ?(validate = Validation.date) token = 
 	(*
 		- verify signed token
 		- parse token
