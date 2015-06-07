@@ -2,6 +2,6 @@
 
 ocamlfind ocamlc \
 	-package nocrypto,yojson -g -linkpkg \
-		b64.mli signing.mli jwt.mli \
-		b64.ml signing.ml jwt.ml \
+		b64.mli signing.mli token.mli jwt.mli \
+		b64.ml signing.ml token.ml jwt.ml \
 		-a -o jwt.cma

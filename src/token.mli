@@ -1,8 +1,9 @@
+open Signing
 
 type t 
 
-val encode : key -> t -> string
-val decode : key -> ?validate:(t -> bool) -> string -> t option
+val encode : key -> t -> string (*TODO: change key to key option*)
+val decode : key option -> ?validate:(t -> bool) -> string -> t option
 
 (* claim manipulation *)
 val claim : string -> t -> Yojson.Basic.json
@@ -25,14 +26,3 @@ val exp : t -> int option
 val nbf : t -> int option
 val iat : t -> int option
 val jti : t -> int option
-
-module Guts : sig
-	val alg_of_str : string -> algorithm option
-	val str_of_alg : algorithm option -> string
-
-	module B64 : sig
-		val encode : string -> string
-		val decode : string -> string
-	end
-end
-

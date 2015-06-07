@@ -6,17 +6,47 @@
 exception Jwt_format_error of string
 exception Jwt_error of string
 
-type algorithm = 
-	| HS256
-	| HS384
-	| HS512
-
-type key = algorithm * string
-
 type t =
   {	header: (string * Yojson.Basic.json) list;
 	payload: (string * Yojson.Basic.json) list;
 	signature: string option }
+
+open Signing
+
+module Guts = struct
+	let (>>=) opt f = match opt with Some x -> Some (f x) | None -> None
+	(*
+		The algorithm translation functions are not as useful as they first seem.
+		There is a security issue with JWTs in that you need to validate the token
+		but in order to validate the token you must first already trust the token
+		to give you an accurate algorithm field.
+
+		In real applications programmers will generally know what hash algorithm
+		is being used and so our parse functionality will require an algorithm be
+		specified.
+	*)
+	let alg_of_str = function
+		| "HS256" -> Some HS256
+		| "HS384" -> Some HS384
+		| "HS512" -> Some HS512
+		| _ -> None
+
+	let str_of_alg = function
+		| Some HS256 -> "HS256"
+		| Some HS384 -> "HS384"
+		| Some HS512 -> "HS512"
+		| None -> "none"
+
+	module StringExt = struct
+		let dequote str =
+			let len = String.length str in
+			if str.[0] = '\"' && str.[len-1] = '\"' then
+				String.sub str 1 (len - 2)
+			else
+				str
+	end
+end
+open Guts
 
 
 (* JWT Reserved Claims *)
@@ -72,7 +102,7 @@ let encode (algorithm, key) token =
 			let signature = [token.header; token.payload]
 				|> List.map compile
 				|> String.concat "." 
-				|> SignedToken.sign alg' key 
+				|> Signing.sign (alg',key)
 			in
 			{ token with signature = Some signature }
 		| Some alg' -> 
@@ -97,23 +127,28 @@ let validate_signature alg key token =
 	in
 	let (front, final) = Str.split (Str.regexp "\\.") token |> split_last in
 	let payload = (String.concat "." front) in
-	let signature = final
+	final
 		>>= B64.decode
-	in
-	SignedToken.verify payload signature alg key
+		|> (function
+			| Some s -> Signing.verify (alg, key) s payload
+			| None -> false)
 
-let decode (alg,key) ?validate token = 
+let decode cert_key ?validate token = 
 	(*
 		- verify signed token
 		- parse token
 		- Otherwise list of errors (or exceptions, though that would suck). 
 	*)
-	if validate_signature alg key token then
-		let tok = parse token in
+	let valid_cert = match cert_key with
+		| Some (alg, key) -> validate_signature alg key token
+		| None -> true
+	in
+
+	if valid_cert then
+		let parsed = parse token in
 		match validate with
-			| Some validate -> 
-				if validate tok then Some tok else None
-			| None -> Some tok
+			| Some validate -> (if validate parsed then Some parsed else None)
+			| None -> Some parsed
 	else None
 
 let claim str jwt = List.assoc str jwt.payload
