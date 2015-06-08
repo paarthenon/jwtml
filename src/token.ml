@@ -11,9 +11,10 @@ type t =
 	payload: (string * Yojson.Basic.json) list;
 	signature: string option }
 
-open Signing
+
 
 module Guts = struct
+	open Signing
 	let (>>=) opt f = match opt with Some x -> Some (f x) | None -> None
 	(*
 		The algorithm translation functions are not as useful as they first seem.
