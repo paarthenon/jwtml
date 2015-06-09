@@ -2,7 +2,7 @@ open Signing
 
 type t 
 
-val encode : key -> t -> string (*TODO: change key to key option*)
+val encode : ?key:Signing.key -> t -> string (*TODO: change key to key option*)
 val decode : ?key:Signing.key -> ?validate:(t -> bool) -> string -> t option
 
 (* claim manipulation *)

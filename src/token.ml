@@ -95,27 +95,18 @@ let parse token =
 			}
 		| _ -> raise (Jwt_format_error "Improper input. Expected a period-delimited string with two or three parts")
 
-let encode (algorithm, key) token =
+let encode ?key token =
 	let compile x = `Assoc x |> Yojson.Basic.to_string |> B64.encode in
-
-	let signed_token = match (alg token) with
-		| Some alg' when alg' = algorithm -> 
-			let signature = [token.header; token.payload]
-				|> List.map compile
-				|> String.concat "." 
-				|> Signing.sign (alg',key)
-			in
-			{ token with signature = Some signature }
-		| Some alg' -> 
-			let err_str = (Printf.sprintf "Algorithm mismatch! Jwt has algorithm %s. %s was expected." 
-				(str_of_alg (Some alg')) (str_of_alg (Some algorithm))) in
-			raise (Jwt_error err_str)
-		| None -> token
+	let b64_jwt = [token.header; token.payload]
+		|> List.map compile
+		|> String.concat "."
 	in
-	(* I feel like there's a more elegant way to do this *)
-	match signed_token.signature with
-		| Some s -> String.concat "." [compile signed_token.header; compile signed_token.payload; B64.encode s]
-		| None -> String.concat "." [compile signed_token.header; compile signed_token.payload]
+	match key with
+		| Some (alg, secret) ->
+			String.concat "." [b64_jwt; (Signing.sign (alg,secret) b64_jwt)]
+		| None -> b64_jwt
+
+	(*TODO: check alg in Signing.key vs. alg_token*)
 
 let validate_signature alg key token =
 	let split_last l = 
@@ -141,7 +132,7 @@ let decode ?key ?validate token =
 		- Otherwise list of errors (or exceptions, though that would suck). 
 	*)
 	let valid_cert = match key with
-		| Some (alg, key) -> validate_signature alg key token
+		| Some (alg, secret) -> validate_signature alg secret token
 		| None -> true
 	in
 
