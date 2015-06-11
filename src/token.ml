@@ -6,12 +6,11 @@
 exception Jwt_format_error of string
 exception Jwt_error of string
 
-type json = Yojson.Basic.json
-
 type t =
-  {	header: (string * json) list;
-	payload: (string * json) list;
+  {	header: (string * Yojson.Basic.json) list;
+	payload: (string * Yojson.Basic.json) list;
 	signature: string option }
+
 
 
 module Guts = struct
@@ -98,8 +97,7 @@ let parse token =
 
 let encode ?key token =
 	let compile x = `Assoc x |> Yojson.Basic.to_string |> B64.encode in
-	let b64_jwt = 
-		[token.header; token.payload]
+	let b64_jwt = [token.header; token.payload]
 		|> List.map compile
 		|> String.concat "."
 	in
