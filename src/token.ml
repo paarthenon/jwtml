@@ -46,6 +46,16 @@ module Guts = struct
 			else
 				str
 	end
+
+	module ListExt = struct
+		let split_last l = 
+			let rec helper sofar = function
+				| [] -> ([], None)
+				| [x] -> (List.rev sofar, Some x)
+				| h::t -> helper (h::sofar) t
+			in
+		helper [] l
+	end
 end
 open Guts
 
@@ -109,21 +119,12 @@ let encode ?key token =
 	(*TODO: check alg in Signing.key vs. alg_token*)
 
 let validate_signature alg key token =
-	let split_last l = 
-		let rec helper sofar = function
-			| [] -> ([], None)
-			| [x] -> (List.rev sofar, Some x)
-			| h::t -> helper (h::sofar) t
-		in
-		helper [] l
-	in
-	let (front, final) = Str.split (Str.regexp "\\.") token |> split_last in
-	let payload = (String.concat "." front) in
+	let (front, final) = Str.split (Str.regexp "\\.") token |> ListExt.split_last in
 	final
 		>>= B64.decode
-		|> (function
-			| Some s -> Signing.verify (alg, key) s payload
-			| None -> false)
+		|> function
+			| Some s -> Signing.verify (alg, key) s (String.concat "." front)
+			| None -> false
 
 let decode ?key ?validate token = 
 	(*
